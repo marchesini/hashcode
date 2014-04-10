@@ -1,46 +1,47 @@
 #!/usr/bin/env python
-# encoding: utf-8
+# -*- encoding: utf-8 -*-
 
 from streetview import *
+from choice import bfs, blf, update
+from collections import defaultdict
 import random
+import operator
 
 def create_answer(V):
 
     f = open('answer.txt', 'w')
     f.write('%s\n' % len(V))
-    for i in range(len(V)):
-        f.write('%s\n' % len(V[i])) # nb intersections visitees par ci
-        for edge in V[i]:
-            f.write('%s\n' % edge) # depart
+    for v in V:
+        f.write('%s\n' % len(v)) # nb intersections visitees par ci
+        for edge in v:
+            f.write('%s\n' % edge)
 
-def choix(s,cout,longueur, chemin, visited):
-    # n = len(cout[0])
-
-    ratios = []
-
-    max_ratio = 0
-    J = 0
-    # for j in xrange(n):
-    for j in cout[s].keys():
-        ratio = float(longueur[s][j]) / cout[s][j]
-        ratios.append(ratio)
-        # if longueur[s][j] == -1:
-        #     continue
-        if ratio >= max_ratio: # and boucle(chemin):
-            J = j
-            max_ratio = ratio
+def choix(s, cost, length, score, covered):
+    #max_score = 0
+    #J = 0
+    #ratios = []
+    #for j in cost[s].keys():
+    #    ratio = float(length[s][j]) / cost[s][j]
+    #    ratios.append(ratio)
+    #    if ratio >= max_ratio: # and boucle(path):
+    #        J = j
+    #        max_ratio = ratio
+    
+    J = max(score[s].keys(), key=score[s].get)
+    max_score = score[s][J]
 
     # print ('min ratio:', min(ratios))
-    print ('max ratio:', max(ratios))
+    # print ('max ratio:', max(ratios))
+    ratio = length[s][J] / cost[s][J]
+    pen = penalty(cost[s][J], covered[s][J], ratio)
 
-    # if (cout[s][j] != -1):
-    longueur[s][J] /= 1.85
-    # if longueur[s][J] < 0:
-    #     longueur[s][J] = 0
-    if J in longueur and s in longueur[J]:
-        longueur[J][s] /= 1.85
+    score[s][J] /= pen
+    # if length[s][J] < 0:
+    #     length[s][J] = 0
+    if J in length and s in length[J]:
+        score[J][s] /= pen
 
-    return (J,cout[s][J],longueur, max_ratio)
+    return (J, cost[s][J], score, max_score)
 
 # from http://stackoverflow.com/questions/4997851/python-dijkstra-algorithm
 def dijkstra(net, s, t):
@@ -93,85 +94,102 @@ def dijkstra(net, s, t):
 # Given a large random network find the shortest path from '0' to '5'
 # print dijkstra(net=randNet(), s='0', t='5')
 
-# deplace une voiture de 1
-def deplace1V(cout,longueur, S, T, first, visited):
+# deplace une voiture
+def deplace1V(cost, length, score, S, T, first, visited, covered):
 
-    chemin = [S]
+    path = [S]
     c = 0
     s = S
 
     steps = 0
 
-    limit = 1
-    loop = [False] * 10
-    counter = 0
+    #limit = 0.5
+    #looplength = 6
+    #loop = [False] * looplength
+    #counter = 0
+    loopcost = 0
+    threshold = 1800
 
-    path,t = dijkstra(cout, S, first)
+    dpath, t = dijkstra(cost, S, first)
     c += t
-    for p in path:
-        chemin.append(p)
-        s = p
+    for p in dpath:
+        path.append(p)
+    s = p
 
     while c < T:
-        if all(loop):
-            notvisited = [node for node in range(N) if not visited[node]]
+        #if all(loop):
+        if loopcost > threshold:
+            print 'jump...'
+            notvisited = list(set(range(N)) - visited)
             nextfirst = random.choice(notvisited)
-            path, t = dijkstra(cout, s, nextfirst)
-            c += t
-            for p in path:
-                chemin.append(p)
-            s = p
-            loop = [False] * 10
+            dpath, t = dijkstra(cost, s, nextfirst)
+            print 'done'
+            for i in range(len(dpath)-1):
+                path.append(dpath[i])
+                visited.add(dpath[i])
+                covered[dpath[i]][dpath[i+1]] += 1
+                try:
+                    covered[dpath[i+1]][dpath[i]] += 1
+                except KeyError:
+                    pass
+            path.append(dpath[-1])
+            visited.add(dpath[-1])
+            s = dpath[-1]
+            #loop = [False] * looplength
+            loopcost = 0
         else:
-            (r,t,longueur,ratio) = choix(s,cout,longueur, chemin, visited)
-            if (c + t) <= T:
-                chemin.append(r)
-                visited[r] = 1
-                s = r
-            counter += 1
-            loop[counter % 10] = (ratio < limit)
+            #r, t, score, max_score = choix(s, cost, length, score, covered)
+            #if (c + t) <= T:
+            #    path.append(r)
+            #    visited.add(r)
+            #    covered[s][r] += 1
+            #    try:
+            #        covered[r][s] += 1
+            #    except KeyError:
+            #        pass
+            #    s = r
+            #counter += 1
+            #loop[counter % looplength] = (max_score < limit)
+            bp, ms = blf(s, 8, score, [])
+            update(bp, visited, covered, score, cost, ratio)
+            path.extend(bp[1:])
+            s = bp[-1]
+            t = sum(cost[bp[i]][bp[i+1]] for i in range(len(bp)-1))
+            loopcost = 0 if covered[path[-2]][path[-1]] < 2 else loopcost + t
         c += t
-        # steps += 1
-        # if steps >= 500:
-        #     break
 
     print 'c', c
-    return (chemin,longueur)
+    return (path, length)
 
-if '__main__' == __name__:
-
-    # cout = [[0,1,0],
-    #         [1,0,0],
-    #         [1,1,0]]
-    # longueur = [[0,1,0],
-    #             [1,0,0],
-    #             [1,1,0]]
+if __name__ == '__main__':
 
     print 'reading map'
-    N, M, T, C, S, coord, cost, length = readfile('paris_54000.txt')
+    #N, M, T, C, S, coord, edges, cost, length, ratio = readfile('paris_54000.txt')
+    N, M, T, C, S, coord, edges, cost, length, ratio = readfile('paris_432000.txt')
 
     print 'N, M, T, C, S'
     print N, M, T, C, S
 
-    visited = [0] * N
-
-    # T = 3
-    # S = 0
+    visited = set() # for nodes
+    covered = defaultdict(defaultdict) # for edges
+    score = defaultdict(defaultdict)
+    for (s, t) in edges:
+        score[s][t] = ratio[s][t]
+        covered[s][t] = 0
 
     print 'choosing path'
-    # chemin =  deplace1V(cost,length,S,T)
-    # print chemin
-
-    # C = 8
-    # S = 4516
 
     start = [1000, 250, 140, 4000, 5000, 152, 79, 8000]
-
-    # V = [[S, 4122, 7281, 2751] for i in range(C)]
+    #start = random.sample(range(N), 8)
+    print 'starting destinations: %s' % start
     V = []
+    
     for i in range(C):
-        (chemin,length) = deplace1V(cost,length,S,T, start[i], visited)
-        V.append(chemin)
+        print 'car %s' % str(i+1)
+        (path, length) = deplace1V(cost, length, score, S, T, start[i], visited, covered)
+        path = trim(path, T, cost)
+        V.append(path)
 
+    print sorted([(i,j,covered[i][j]) for (i,j) in edges], key=operator.itemgetter(2))[-20:]
     print 'writing answer'
     create_answer(V)
